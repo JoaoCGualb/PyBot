@@ -1,69 +1,88 @@
-import math
-
-import numpy as np
 import pandas as pd
+import os
+
+def cria_df_estoque(diretorio_excel):
+    excel_estoque = pd.read_excel(diretorio_excel)
+
+    df = pd.DataFrame(excel_estoque)
+    df_novo = pd.DataFrame()
+    df_novo['Código'] = df['Unnamed: 0']
+    df_novo['Descrição'] = df['Unnamed: 1']
+    df_novo['Grupo'] = df['Unnamed: 8']
+    df_novo['SubGrupo'] = df['Unnamed: 9']
+    df_novo['Estoque'] = df['Unnamed: 10']
+    df_novo['Estoque Mínimo'] = df['Unnamed: 12']
+
+    df_novo.dropna(inplace=True)
+    return df_novo.drop(5)
 
 
-class Colunas:
-    nome = {
-            'codigo': 'Código',
-            'estoque': 'Estoque',
-            'descricao': 'Descrição',
-            'media_vendas': 'Média de Vendas',
-            'estimativa': 'Estimativa de Compra',
-            'dias_restantes': 'Dias Restantes de Estoque',
-            'vendas': 'Vendas',
-    }
+def cria_df_vendas(diretorio_excel):
+    excel_vendas = pd.read_excel(diretorio_excel)
+
+    df = pd.DataFrame(excel_vendas)
+    df_novo = pd.DataFrame()
+    df_novo['Código'] = df['Unnamed: 0']
+    df_novo['Vendas'] = df['Unnamed: 6']
+
+    df_novo.dropna(inplace=True)
+    return df_novo.drop(5)
 
 
-# colunas
-# 0 - codigo
-# 1 - descricao
-# 7 - valor unitario
-# 8 - quantidade
-# 10 - subtotal
-# 12 - desconto
-# 13 - acresimo
-# 15 - total
-# linhas
-# 5 - cabecario
-# 6 - conteudo inicio
-# 6+n - conteudo vazio
+def cria_estimativa_de_compra(estoque, vendas, dias):
+    print('Gerando Tabelas...')
+    try:
+        df_estoque = cria_df_estoque(estoque)
+        df_vendas = cria_df_vendas(vendas)
+        print('Gerando Tabelas...OK')
+    except FileNotFoundError:
+        raise Exception('Um ou mais diretorios invalidos')
+    except:
+        raise Exception('Erro ao gerar Tabelas')
+
+    print('Unificando Tabelas...')
+    try:
+        df_analise = pd.merge(df_estoque, df_vendas, how="left", on="Código")
+        df_analise.dropna(inplace=True)
+        print('Unificando Tabelas...OK')
+    except ValueError:
+        raise Exception('Tabelas não encontradas')
+    except:
+        raise Exception('Erro ao unificar Tabelas')
+
+    df_final = cria_colunas(df_analise, dias)
+
+    print('Criando excel')
+    criarExcel(df_final)
 
 
-# excel1 = pd.read_excel('estoque.xls')
-# excel2 = pd.read_excel('vendas.xls')
-excel1 = pd.read_excel('1.xls')
-excel2 = pd.read_excel('2.xls')
-dia = 14
+def criarExcel(df_final):
+    if not os.path.exists('db'):
+        os.makedirs('db')
 
-df_estoque = pd.DataFrame(excel1)
-df_vendas = pd.DataFrame(excel2)
+    df_final.to_excel('db/analise_db.xlsx')
 
 
-def limpa_excell(dataframe: pd.DataFrame, nome):
-    dataframe.dropna(subset=['Unnamed: 0', 'Unnamed: 1', 'Unnamed: 8'], inplace=True)
-    dataframe: pd.DataFrame = dataframe.drop(
-        columns=['Unnamed: 2', 'Unnamed: 3', 'Unnamed: 4', 'Unnamed: 5', 'Unnamed: 6', 'Unnamed: 7',
-                 'Unnamed: 9', 'Unnamed: 10', 'Unnamed: 11', 'Unnamed: 12', 'Unnamed: 13', 'Unnamed: 14',
-                 'Unnamed: 15'], index=5)
-    return dataframe.rename(columns={'Unnamed: 0': Colunas.nome['codigo'], 'Unnamed: 1': Colunas.nome['descricao'], 'Unnamed: 8': nome})
+def cria_colunas(df_analise, dias):
+    print('Criando colunas de analise...')
+    try:
+        df_analise['Estimativa de Compra'] = (df_analise['Estoque Mínimo'] + df_analise['Vendas']) - df_analise['Estoque']
+        nao_compra = df_analise['Estimativa de Compra'] > 0
+        df_analise['Estimativa de Compra'] = df_analise['Estimativa de Compra'].where(nao_compra, 0)
+        df_analise['Média de Vendas'] = df_analise['Vendas'] / dias
+        df_analise['Dias de Estoque'] = df_analise['Estoque'] / df_analise['Média de Vendas']
+        print('Criando colunas de analise...OK')
+        return df_analise
+    except ZeroDivisionError:
+        raise Exception('Valores de colunas = 0')
+    except TypeError:
+        raise Exception('Valores das colunas não são numericos')
+    except:
+        raise Exception('Erro ao criar colunas de analise')
 
 
-df_estoque_limpo = limpa_excell(df_estoque, Colunas.nome['estoque'])
-df_vendas_limpo = limpa_excell(df_vendas, Colunas.nome['vendas'])
-
-df_analise_compra = pd.merge(df_estoque_limpo, df_vendas_limpo, how="left", on=[Colunas.nome['codigo'],Colunas.nome['descricao']])
-df_analise_compra.dropna(subset=[Colunas.nome['vendas']], inplace=True)
-
-df_analise_compra[Colunas.nome['estimativa']] = (df_analise_compra[Colunas.nome['vendas']] - df_analise_compra[Colunas.nome['estoque']])
-
-nao_compra = df_analise_compra[Colunas.nome['estimativa']] > 0
-
-df_analise_compra[Colunas.nome['estimativa']] = df_analise_compra[Colunas.nome['estimativa']].where(nao_compra, 0)
-
-df_analise_compra[Colunas.nome['media_vendas']] = df_analise_compra[Colunas.nome['vendas']] / dia
-df_analise_compra[Colunas.nome['dias_restantes']] = df_analise_compra[Colunas.nome['estoque']] / df_analise_compra[Colunas.nome['media_vendas']]
-
-df_analise_compra.to_excel('estimatica_de_compra.xlsx')
-print(df_analise_compra.head(10))
+if __name__ == '__main__':
+    diretorio_estoque = input('Insira Diretorio do excel Estoque:')
+    diretorio_vendas = input('Insira Diretorio do excel Vendas:')
+    dias_vendas = input('Dias de Vendas:')
+    cria_estimativa_de_compra(diretorio_estoque, diretorio_vendas, int(dias_vendas))

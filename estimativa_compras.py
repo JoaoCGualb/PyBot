@@ -9,7 +9,8 @@ def cria_df_estoque(diretorio_excel):
     df_novo['Descrição'] = df['Unnamed: 1']
     df_novo['Grupo'] = df['Unnamed: 8']
     df_novo['SubGrupo'] = df['Unnamed: 9']
-    df_novo['Estoque'] = df['Unnamed: 11']
+    df_novo['Estoque'] = df['Unnamed: 10']
+    df_novo['Estoque Mínimo'] = df['Unnamed: 12']
 
     df_novo.dropna(inplace=True)
     return df_novo.drop(5)
@@ -57,7 +58,7 @@ def cria_estimativa_de_compra(estoque, vendas, dias):
 def cria_colunas(df_analise, dias):
     print('Criando colunas de analise...')
     try:
-        df_analise['Estimativa de Compra'] = (df_analise['Vendas'] - df_analise['Estoque'])
+        df_analise['Estimativa de Compra'] = (df_analise['Estoque Mínimo'] + df_analise['Vendas']) - df_analise['Estoque']
         nao_compra = df_analise['Estimativa de Compra'] > 0
         df_analise['Estimativa de Compra'] = df_analise['Estimativa de Compra'].where(nao_compra, 0)
         df_analise['Média de Vendas'] = df_analise['Vendas'] / dias
